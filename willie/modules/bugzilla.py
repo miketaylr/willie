@@ -9,7 +9,7 @@ http://willie.dftba.net/
 from lxml import etree
 import re
 from willie import web, tools
-from willie.module import rule
+from willie.module import rule, commands, example
 
 
 def configure(config):
@@ -46,15 +46,23 @@ def setup(bot):
 @rule(r'.*https?://(\S+?)'
        '(/show_bug.cgi\?\S*?)'
        '(id=\d+).*')
-def show_bug(bot, trigger, match=None):
+def show_bug(bot, trigger, match=None, bug_url=None):
     """Show information about a Bugzilla bug."""
-    match = match or trigger
-    domain = match.group(1)
-    if domain not in bot.config.bugzilla.get_list('domains'):
-        return
-    url = 'https://%s%sctype=xml&%s' % match.groups()
+    if bug_url is None:
+        print(match, trigger)
+        match = match or trigger
+        domain = match.group(1)
+        if domain not in bot.config.bugzilla.get_list('domains'):
+            return
+        url = 'https://%s%sctype=xml&%s' % match.groups()
+    else:
+        url = bug_url
+    print(url)
     data = web.get(url)
     bug = etree.fromstring(data).find('bug')
+    if bug.get('error'):
+        bot.reply("That bug id is sketchy, man.")
+        return
 
     message = ('[BUGZILLA] %s | Product: %s | Component: %s | Version: %s | ' +
                'Importance: %s |  Status: %s | Assigned to: %s | ' +
@@ -73,3 +81,15 @@ def show_bug(bot, trigger, match=None):
         status, bug.find('assigned_to').text, bug.find('creation_ts').text,
         bug.find('delta_ts').text)
     bot.say(message)
+
+
+@commands('b', 'bug')
+@example('.bug 1234567')
+def call_show_bug(bot, trigger):
+    print(trigger, trigger.group(2))
+    bug_number = trigger.group(2)
+    if re.match(r'^\d+$', bug_number):
+        bug_url = 'https://bugzilla.mozilla.org/show_bug.cgi?ctype=xml&id=%s' % bug_number
+        show_bug(bot, trigger, None, bug_url=bug_url)
+    else:
+        bot.reply("That's a bogus Bugzilla number, amigo.")
